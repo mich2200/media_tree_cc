@@ -266,6 +266,7 @@ static void dvb_frontend_add_event(struct dvb_frontend *fe,
 
 	wake_up_interruptible(&events->wait_queue);
 }
+EXPORT_SYMBOL(dvb_frontend_add_event);
 
 static int dvb_frontend_test_event(struct dvb_frontend_private *fepriv,
 				   struct dvb_fe_events *events)
