@@ -293,6 +293,7 @@ struct v4l2_fh;
  *	:ref:`VIDIOC_UNSUBSCRIBE_EVENT <vidioc_unsubscribe_event>` ioctl
  * @vidioc_default: pointed used to allow other ioctls
  */
+
 struct v4l2_ioctl_ops {
 	/* ioctl callbacks */
 
@@ -585,6 +586,11 @@ struct v4l2_ioctl_ops {
 	/* For other private ioctls */
 	long (*vidioc_default)(struct file *file, void *fh,
 			       bool valid_prio, unsigned int cmd, void *arg);
+	//for tbs ioctl
+	int (*vidioc_tbs_g_ctrls)(struct file *file, void *fh,
+			     struct v4l2_tbs_data *data);
+	int (*vidioc_tbs_s_ctrls)(struct file *file, void *fh,
+			     struct v4l2_tbs_data *data);
 };
 
 
@@ -685,6 +691,16 @@ extern const char *v4l2_type_names[];
 long int v4l2_compat_ioctl32(struct file *file, unsigned int cmd,
 			     unsigned long arg);
 #endif
+
+unsigned int v4l2_compat_translate_cmd(unsigned int cmd);
+int v4l2_compat_get_user(void __user *arg, void *parg, unsigned int cmd);
+int v4l2_compat_put_user(void __user *arg, void *parg, unsigned int cmd);
+int v4l2_compat_get_array_args(struct file *file, void *mbuf,
+			       void __user *user_ptr, size_t array_size,
+			       unsigned int cmd, void *arg);
+int v4l2_compat_put_array_args(struct file *file, void __user *user_ptr,
+			       void *mbuf, size_t array_size,
+			       unsigned int cmd, void *arg);
 
 /**
  * typedef v4l2_kioctl - Typedef used to pass an ioctl handler.

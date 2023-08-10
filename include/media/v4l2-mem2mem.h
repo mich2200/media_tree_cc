@@ -305,6 +305,28 @@ void v4l2_m2m_last_buffer_done(struct v4l2_m2m_ctx *m2m_ctx,
 			       struct vb2_v4l2_buffer *vbuf);
 
 /**
+ * v4l2_m2m_suspend() - stop new jobs from being run and wait for current job
+ * to finish
+ *
+ * @m2m_dev: opaque pointer to the internal data to handle M2M context
+ *
+ * Called by a driver in the suspend hook. Stop new jobs from being run, and
+ * wait for current running job to finish.
+ */
+void v4l2_m2m_suspend(struct v4l2_m2m_dev *m2m_dev);
+
+/**
+ * v4l2_m2m_resume() - resume job running and try to run a queued job
+ *
+ * @m2m_dev: opaque pointer to the internal data to handle M2M context
+ *
+ * Called by a driver in the resume hook. This reverts the operation of
+ * v4l2_m2m_suspend() and allows job to be run. Also try to run a queued job if
+ * there is any.
+ */
+void v4l2_m2m_resume(struct v4l2_m2m_dev *m2m_dev);
+
+/**
  * v4l2_m2m_reqbufs() - multi-queue-aware REQBUFS multiplexer
  *
  * @file: pointer to struct &file
@@ -473,6 +495,11 @@ __poll_t v4l2_m2m_poll(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
 int v4l2_m2m_mmap(struct file *file, struct v4l2_m2m_ctx *m2m_ctx,
 		  struct vm_area_struct *vma);
 
+#ifndef CONFIG_MMU
+unsigned long v4l2_m2m_get_unmapped_area(struct file *file, unsigned long addr,
+					 unsigned long len, unsigned long pgoff,
+					 unsigned long flags);
+#endif
 /**
  * v4l2_m2m_init() - initialize per-driver m2m data
  *
@@ -737,24 +764,6 @@ v4l2_m2m_dst_buf_remove(struct v4l2_m2m_ctx *m2m_ctx)
 {
 	return v4l2_m2m_buf_remove(&m2m_ctx->cap_q_ctx);
 }
-
-/*
- * v4l2_m2m_job_pause() - paused the schedule of data which from the job queue.
- *
- * @m2m_dev: opaque pointer to the internal data to handle M2M context
- * @m2m_ctx: m2m context assigned to the instance given by struct &v4l2_m2m_ctx
- */
-void v4l2_m2m_job_pause(struct v4l2_m2m_dev *m2m_dev,
-			 struct v4l2_m2m_ctx *m2m_ctx);
-
- /*
-  * v4l2_m2m_job_resume() - resumed the schedule of data which from the job que.
-  *
-  * @m2m_dev: opaque pointer to the internal data to handle M2M context
-  * @m2m_ctx: m2m context assigned to the instance given by struct &v4l2_m2m_ctx
-  */
-void v4l2_m2m_job_resume(struct v4l2_m2m_dev *m2m_dev,
-			 struct v4l2_m2m_ctx *m2m_ctx);
 
 /**
  * v4l2_m2m_buf_remove_by_buf() - take off exact buffer from the list of ready
