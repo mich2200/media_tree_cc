@@ -85,9 +85,9 @@ static int m88ds3103b_dt_write(struct m88ds3103_dev *dev, int reg, int data)
 	if (ret)
 		dev_dbg(&client->dev, "fail=%d\n", ret);
 
-	ret = i2c_transfer(dev->client->adapter, &msg, 1);
+	ret = i2c_transfer(dev->dt_client->adapter, &msg, 1);
 	if (ret != 1) {
-		dev_dbg(&client->dev, "0x%02x (ret=%i, reg=0x%02x, value=0x%02x)\n",
+		dev_err(&client->dev, "0x%02x (ret=%i, reg=0x%02x, value=0x%02x)\n",
 			dev->dt_addr, ret, reg, data);
 
 		m88ds3103_update_bits(dev, 0x11, 0x01, 0x01);
@@ -134,9 +134,9 @@ static int m88ds3103b_dt_read(struct m88ds3103_dev *dev, u8 reg)
 	if (ret)
 		dev_dbg(&client->dev, "fail=%d\n", ret);
 
-	ret = i2c_transfer(dev->client->adapter, msg, 2);
+	ret = i2c_transfer(dev->dt_client->adapter, msg, 2);
 	if (ret != 2) {
-		dev_dbg(&client->dev, "0x%02x (err=%d, reg=0x%02x)\n",
+		dev_err(&client->dev, "0x%02x (ret=%d, reg=0x%02x)\n",
 			dev->dt_addr, ret, reg);
 
 		m88ds3103_update_bits(dev, 0x11, 0x01, 0x01);
@@ -209,9 +209,6 @@ static int m88ds3103_read_status(struct dvb_frontend *fe,
 		ret = -EINVAL;
 		goto err;
 	}
-
-	if (dev->cfg->set_lock_led)
-		dev->cfg->set_lock_led(fe, *status & FE_HAS_LOCK);
 
 	dev->fe_status = *status;
 	dev_dbg(&client->dev, "lock=%02x status=%02x\n", utmp, *status);
@@ -454,8 +451,8 @@ static int m88ds3103b_select_mclk(struct m88ds3103_dev *dev)
 
 static int m88ds3103b_set_mclk(struct m88ds3103_dev *dev, u32 mclk_khz)
 {
-	u8 reg11 = 0x0A, reg15, reg16, reg1D, reg1E, reg1F, tmp;
-	u8 sm, f0 = 0, f1 = 0, f2 = 0, f3 = 0, pll_ldpc_mode;
+	u8 reg15, reg16, reg1D, reg1E, reg1F, tmp;
+	u8 sm, f0 = 0, f1 = 0, f2 = 0, f3 = 0;
 	u16 pll_div_fb, N;
 	u32 div;
 
@@ -475,8 +472,6 @@ static int m88ds3103b_set_mclk(struct m88ds3103_dev *dev, u32 mclk_khz)
 		mclk_khz /= 96;
 	}
 
-	pll_ldpc_mode = (reg15 >> 1) & 0x01;
-
 	pll_div_fb = (reg15 & 0x01) << 8;
 	pll_div_fb += reg16;
 	pll_div_fb += 32;
@@ -485,8 +480,6 @@ static int m88ds3103b_set_mclk(struct m88ds3103_dev *dev, u32 mclk_khz)
 	div /= mclk_khz;
 
 	if (dev->cfg->ts_mode == M88DS3103_TS_SERIAL) {
-		reg11 |= 0x02;
-
 		if (div <= 32) {
 			N = 2;
 
@@ -537,8 +530,6 @@ static int m88ds3103b_set_mclk(struct m88ds3103_dev *dev, u32 mclk_khz)
 		else if ((f3 < 8) && (f3 != 0))
 			f3 = 8;
 	} else {
-		reg11 &= ~0x02;
-
 		if (div <= 32) {
 			N = 2;
 
@@ -911,6 +902,7 @@ static int m88ds3103_set_frontend(struct dvb_frontend *fe)
 			if (ret)
 				goto err;
 		}
+		fallthrough;
 	default:
 		u16tmp = DIV_ROUND_UP(target_mclk, dev->cfg->ts_clk);
 		u8tmp1 = u16tmp / 2 - 1;
@@ -979,11 +971,13 @@ static int m88ds3103_set_frontend(struct dvb_frontend *fe)
 	if (dev->chiptype == M88DS3103_CHIPTYPE_3103B) {
 		/* enable/disable 192M LDPC clock */
 		ret = m88ds3103_update_bits(dev, 0x29, 0x10,
-					(c->delivery_system == SYS_DVBS) ? 0x10 : 0x0);
+				(c->delivery_system == SYS_DVBS) ? 0x10 : 0x0);
 		if (ret)
 			goto err;
 
 		ret = m88ds3103_update_bits(dev, 0xc9, 0x08, 0x08);
+		if (ret)
+			goto err;
 	}
 
 	dev_dbg(&client->dev, "carrier offset=%d\n",
@@ -1050,7 +1044,7 @@ static int m88ds3103_init(struct dvb_frontend *fe)
 	if (utmp)
 		goto warm;
 
-	/* global reset, global diseqc reset, golbal fec reset */
+	/* global reset, global diseqc reset, global fec reset */
 	ret = regmap_write(dev->regmap, 0x07, 0xe0);
 	if (ret)
 		goto err;
@@ -1060,7 +1054,7 @@ static int m88ds3103_init(struct dvb_frontend *fe)
 
 	/* cold state - try to download firmware */
 	dev_info(&client->dev, "found a '%s' in cold state\n",
-		 m88ds3103_ops.info.name);
+		 dev->fe.ops.info.name);
 
 	if (dev->chiptype == M88DS3103_CHIPTYPE_3103B)
 		name = M88DS3103B_FIRMWARE;
@@ -1111,7 +1105,7 @@ static int m88ds3103_init(struct dvb_frontend *fe)
 	}
 
 	dev_info(&client->dev, "found a '%s' in warm state\n",
-		 m88ds3103_ops.info.name);
+		 dev->fe.ops.info.name);
 	dev_info(&client->dev, "firmware version: %X.%X\n",
 		 (utmp >> 4) & 0xf, (utmp >> 0 & 0xf));
 
@@ -1149,9 +1143,6 @@ static int m88ds3103_sleep(struct dvb_frontend *fe)
 	unsigned int utmp;
 
 	dev_dbg(&client->dev, "\n");
-
-	if (dev->cfg->set_lock_led)
-		dev->cfg->set_lock_led(fe, 0);
 
 	dev->fe_status = 0;
 	dev->delivery_system = SYS_UNDEFINED;
@@ -1697,8 +1688,8 @@ struct dvb_frontend *m88ds3103_attach(const struct m88ds3103_config *cfg,
 	strscpy(board_info.type, "m88ds3103", I2C_NAME_SIZE);
 	board_info.addr = cfg->i2c_addr;
 	board_info.platform_data = &pdata;
-	client = i2c_new_device(i2c, &board_info);
-	if (!client || !client->dev.driver)
+	client = i2c_new_client_device(i2c, &board_info);
+	if (!i2c_client_has_driver(client))
 		return NULL;
 
 	*tuner_i2c_adapter = pdata.get_i2c_adapter(client);
@@ -1798,9 +1789,9 @@ static int m88ds3103_probe(struct i2c_client *client,
 	dev->config.lnb_en_pol = pdata->lnb_en_pol;
 	dev->cfg = &dev->config;
 	/* create regmap */
-	dev->regmap_config.reg_bits = 8,
-	dev->regmap_config.val_bits = 8,
-	dev->regmap_config.lock_arg = dev,
+	dev->regmap_config.reg_bits = 8;
+	dev->regmap_config.val_bits = 8;
+	dev->regmap_config.lock_arg = dev;
 	dev->regmap = devm_regmap_init_i2c(client, &dev->regmap_config);
 	if (IS_ERR(dev->regmap)) {
 		ret = PTR_ERR(dev->regmap);
@@ -1881,7 +1872,10 @@ static int m88ds3103_probe(struct i2c_client *client,
 
 	/* create dvb_frontend */
 	memcpy(&dev->fe.ops, &m88ds3103_ops, sizeof(struct dvb_frontend_ops));
-	if (dev->chip_id == M88RS6000_CHIP_ID)
+	if (dev->chiptype == M88DS3103_CHIPTYPE_3103B)
+		strscpy(dev->fe.ops.info.name, "Montage Technology M88DS3103B",
+			sizeof(dev->fe.ops.info.name));
+	else if (dev->chip_id == M88RS6000_CHIP_ID)
 		strscpy(dev->fe.ops.info.name, "Montage Technology M88RS6000",
 			sizeof(dev->fe.ops.info.name));
 	if (!pdata->attach_in_use)
@@ -1902,7 +1896,14 @@ static int m88ds3103_probe(struct i2c_client *client,
 		if (ret)
 			goto err_kfree;
 		dev->dt_addr = ((utmp & 0x80) == 0) ? 0x42 >> 1 : 0x40 >> 1;
-		dev_err(&client->dev, "dt addr is 0x%02x", dev->dt_addr);
+		dev_dbg(&client->dev, "dt addr is 0x%02x\n", dev->dt_addr);
+
+		dev->dt_client = i2c_new_dummy_device(client->adapter,
+						      dev->dt_addr);
+		if (IS_ERR(dev->dt_client)) {
+			ret = PTR_ERR(dev->dt_client);
+			goto err_kfree;
+		}
 	}
 
 	return 0;
@@ -1918,6 +1919,9 @@ static int m88ds3103_remove(struct i2c_client *client)
 	struct m88ds3103_dev *dev = i2c_get_clientdata(client);
 
 	dev_dbg(&client->dev, "\n");
+
+	if (dev->dt_client)
+		i2c_unregister_device(dev->dt_client);
 
 	i2c_mux_del_adapters(dev->muxc);
 
