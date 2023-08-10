@@ -364,6 +364,10 @@ struct dvb_frontend_internal_info {
  *			allocated by the driver.
  * @init:		callback function used to initialize the tuner device.
  * @sleep:		callback function used to put the tuner to sleep.
+ * @suspend:		callback function used to inform that the Kernel will
+ *			suspend.
+ * @resume:		callback function used to inform that the Kernel is
+ *			resuming from suspend.
  * @write:		callback function used by some demod legacy drivers to
  *			allow other drivers to write data into their registers.
  *			Should not be used on new drivers.
@@ -429,8 +433,8 @@ struct dvb_frontend_internal_info {
  * @ts_bus_ctrl:	callback function used to take control of the TS bus.
  * @set_lna:		callback function to power on/off/auto the LNA.
  * @search:		callback function used on some custom algo search algos.
- * @tuner_ops:		pointer to &struct dvb_tuner_ops
- * @analog_ops:		pointer to &struct analog_demod_ops
+ * @tuner_ops:		pointer to struct dvb_tuner_ops
+ * @analog_ops:		pointer to struct analog_demod_ops
  * @set_property:	callback function to allow the frontend to validade
  *			incoming properties. Should not be used on new drivers.
  */
@@ -445,6 +449,8 @@ struct dvb_frontend_ops {
 
 	int (*init)(struct dvb_frontend* fe);
 	int (*sleep)(struct dvb_frontend* fe);
+	int (*suspend)(struct dvb_frontend *fe);
+	int (*resume)(struct dvb_frontend *fe);
 
 	int (*write)(struct dvb_frontend* fe, const u8 buf[], int len);
 
@@ -495,6 +501,20 @@ struct dvb_frontend_ops {
 	struct analog_demod_ops analog_ops;
 
 	int (*set_property)(struct dvb_frontend* fe, u32 cmd, u32 data);
+
+	void(*spi_read)( struct dvb_frontend *fe,struct ecp3_info *ecp3inf);
+	void(*spi_write)( struct dvb_frontend *fe,struct ecp3_info *ecp3inf);
+
+	void(*mcu_read)( struct dvb_frontend *fe,struct mcu24cxx_info *mcu24cxxinf);
+	void(*mcu_write)( struct dvb_frontend *fe,struct mcu24cxx_info *mcu24cxxinf);
+
+	void(*reg_i2cread)( struct dvb_frontend *fe,struct usbi2c_access *pi2cinf);
+	void(*reg_i2cwrite)( struct dvb_frontend *fe,struct usbi2c_access *pi2cinf);
+
+	void(*eeprom_read)( struct dvb_frontend *fe,struct eeprom_info *peepinf);
+	void(*eeprom_write)( struct dvb_frontend *fe,struct eeprom_info *peepinf);
+    
+    int (*read_temp)(struct dvb_frontend* fe, s16* temp);
 };
 
 #ifdef __DVB_CORE__
@@ -546,8 +566,7 @@ struct dvb_fe_events {
  * @layer.modulation:	per layer modulation;
  * @layer.interleaving:	 per layer interleaving.
  * @stream_id:		If different than zero, enable substream filtering, if
- *			hardware supports (DVB-S2/T2/C2 and ISDB-T/S ).
- * @modcode:		MODCODE selection mask for DVB-S2
+ *			hardware supports (DVB-S2 and DVB-T2).
  * @scrambling_sequence_index:	Carries the index of the DVB-S2 physical layer
  *				scrambling sequence.
  * @atscmh_fic_ver:	Version number of the FIC (Fast Information Channel)
@@ -627,10 +646,9 @@ struct dtv_frontend_properties {
 
 	/* Multistream specifics */
 	u32			stream_id;
-
-	/* DVB-S2 specifics */
 	u32			modcode;
-	/* Physical Layer Scrambling specifics */
+
+    /* Physical Layer Scrambling specifics */
 	u32			scrambling_sequence_index;
 
 	/* ATSC-MH specifics */
@@ -762,7 +780,8 @@ void dvb_frontend_detach(struct dvb_frontend *fe);
  * &dvb_frontend_ops.tuner_ops.suspend\(\) is available, it calls it. Otherwise,
  * it will call &dvb_frontend_ops.tuner_ops.sleep\(\), if available.
  *
- * It will also call &dvb_frontend_ops.sleep\(\) to put the demod to suspend.
+ * It will also call &dvb_frontend_ops.suspend\(\) to put the demod to suspend,
+ * if available. Otherwise it will call &dvb_frontend_ops.sleep\(\).
  *
  * The drivers should also call dvb_frontend_suspend\(\) as part of their
  * handler for the &device_driver.suspend\(\).
@@ -776,7 +795,9 @@ int dvb_frontend_suspend(struct dvb_frontend *fe);
  *
  * This function resumes the usual operation of the tuner after resume.
  *
- * In order to resume the frontend, it calls the demod &dvb_frontend_ops.init\(\).
+ * In order to resume the frontend, it calls the demod
+ * &dvb_frontend_ops.resume\(\) if available. Otherwise it calls demod
+ * &dvb_frontend_ops.init\(\).
  *
  * If &dvb_frontend_ops.tuner_ops.resume\(\) is available, It, it calls it.
  * Otherwise,t will call &dvb_frontend_ops.tuner_ops.init\(\), if available.
