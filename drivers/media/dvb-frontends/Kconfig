@@ -62,14 +62,6 @@ config DVB_MXL5XX
 
 	  Say Y when you want to support these frontends.
 
-config DVB_M88DS3103
-	tristate "Montage Technology M88DS3103"
-	depends on DVB_CORE && I2C && I2C_MUX
-	select REGMAP_I2C
-	default m if !MEDIA_SUBDRV_AUTOSELECT
-	help
-	  Say Y when you want to support this frontend.
-
 config DVB_M88RS6060
         tristate "Montage Technology M88RS6060 Demodulation and tuner"
         depends on DVB_CORE && I2C 
